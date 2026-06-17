@@ -1,0 +1,1061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TERMINAL_OS v2.0</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --green: #00e639;
+    --green-dim: #00a828;
+    --green-glow: rgba(0,230,57,0.15);
+    --bg: #0a0e14;
+    --bg2: #0f1318;
+    --surface: #141920;
+    --border: #1e2d1a;
+    --text: #c8e6c0;
+    --text-dim: #5a7a52;
+    --red: #ff4444;
+    --cyan: #00dbe9;
+    --yellow: #f0e040;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ─── SCANLINES ─── */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.08) 2px,
+      rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ─── LOCK SCREEN ─── */
+  #lock-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg);
+    z-index: 100;
+    transition: opacity 0.8s ease, transform 0.8s ease;
+  }
+
+  #lock-screen.fade-out {
+    opacity: 0;
+    transform: scale(1.05);
+    pointer-events: none;
+  }
+
+  .lock-grid {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle, #1a2a16 1px, transparent 1px);
+    background-size: 28px 28px;
+    opacity: 0.5;
+  }
+
+  .lock-wrap {
+    position: relative;
+    z-index: 2;
+    width: 320px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .lock-header {
+    text-align: center;
+    border: 1px solid var(--border);
+    padding: 12px;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .lock-header::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 1px;
+    background: var(--green);
+    box-shadow: 0 0 12px var(--green);
+  }
+
+  .lock-title {
+    font-size: 22px;
+    font-weight: bold;
+    letter-spacing: -0.02em;
+    color: var(--green);
+    text-shadow: 0 0 20px var(--green);
+  }
+
+  .lock-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    margin-top: 4px;
+  }
+
+  /* Face scan area */
+  .face-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 20px 0 8px;
+  }
+
+  .face-ring {
+    position: relative;
+    width: 80px;
+    height: 80px;
+    cursor: pointer;
+  }
+
+  .face-ring-outer {
+    position: absolute;
+    inset: 0;
+    border: 2px solid rgba(0,230,57,0.2);
+    border-radius: 50%;
+  }
+
+  .face-ring-spin {
+    position: absolute;
+    inset: 0;
+    border: 2px solid var(--green);
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1.4s linear infinite;
+  }
+
+  .face-icon {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 36px;
+  }
+
+  .scan-bar {
+    position: absolute;
+    left: 0; right: 0;
+    height: 1px;
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+    animation: scanMove 2s ease-in-out infinite;
+  }
+
+  @keyframes scanMove {
+    0%,100% { top: 0; }
+    50% { top: 100%; }
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .face-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    color: var(--green);
+    animation: pulse 2s ease infinite;
+  }
+
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* Code display */
+  .code-prompt {
+    text-align: center;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    color: var(--green);
+  }
+
+  .blink { animation: blinkAnim 1s step-end infinite; }
+  @keyframes blinkAnim { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  .dots-row {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 8px 0 4px;
+  }
+
+  .dot {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--green);
+    transition: all 0.15s;
+  }
+
+  .dot.filled {
+    background: var(--green);
+    box-shadow: 0 0 8px var(--green);
+  }
+
+  .dot.error {
+    border-color: var(--red);
+    background: var(--red);
+    box-shadow: 0 0 8px var(--red);
+  }
+
+  .status-line {
+    font-size: 9px;
+    color: var(--text-dim);
+    text-align: right;
+    padding-top: 4px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Keypad */
+  .keypad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+
+  .key {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 14px 0;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    transition: all 0.1s;
+    user-select: none;
+  }
+
+  .key:hover { background: #1a2520; border-color: var(--green-dim); }
+  .key:active {
+    background: var(--green);
+    color: #002203;
+    transform: scale(0.97);
+  }
+
+  .key-num { font-size: 18px; font-weight: 700; }
+  .key-alpha { font-size: 8px; color: var(--text-dim); letter-spacing: 0.1em; }
+
+  .key.danger:hover { border-color: var(--red); }
+  .key.danger .key-num { color: var(--red); font-size: 16px; }
+
+  /* ─── BOOT SCREEN ─── */
+  #boot-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 90;
+    padding: 24px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #boot-screen.visible { display: flex; }
+  #boot-screen.fade-out { opacity: 0; transition: opacity 0.6s; }
+
+  .boot-line {
+    font-size: 12px;
+    color: var(--green);
+    line-height: 1.8;
+    opacity: 0;
+    animation: fadeIn 0.1s forwards;
+  }
+
+  .boot-line.dim { color: var(--text-dim); }
+  .boot-line.ok::after { content: ' [OK]'; color: var(--green); }
+  .boot-line.warn { color: var(--yellow); }
+
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  /* ─── TERMINAL ─── */
+  #terminal-screen {
+    position: fixed;
+    inset: 0;
+    background: var(--bg);
+    z-index: 80;
+    display: none;
+    flex-direction: column;
+  }
+
+  #terminal-screen.visible { display: flex; }
+
+  .term-topbar {
+    background: #060a0f;
+    border-bottom: 1px solid var(--border);
+    padding: 6px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  .term-title {
+    font-size: 11px;
+    color: var(--green);
+    letter-spacing: 0.1em;
+  }
+
+  .term-stats {
+    display: flex;
+    gap: 16px;
+    font-size: 9px;
+    color: var(--text-dim);
+  }
+
+  .term-stat span { color: var(--green); }
+
+  .term-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    scroll-behavior: smooth;
+  }
+
+  .term-body::-webkit-scrollbar { width: 4px; }
+  .term-body::-webkit-scrollbar-track { background: var(--bg); }
+  .term-body::-webkit-scrollbar-thumb { background: var(--green-dim); }
+
+  .term-line {
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  .term-line.green { color: var(--green); }
+  .term-line.dim { color: var(--text-dim); }
+  .term-line.cyan { color: var(--cyan); }
+  .term-line.yellow { color: var(--yellow); }
+  .term-line.red { color: var(--red); }
+  .term-line.white { color: #dfe2eb; }
+  .term-line.glow { text-shadow: 0 0 10px var(--green); }
+
+  .term-input-row {
+    border-top: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+    background: #060a0f;
+  }
+
+  .term-prompt {
+    color: var(--green);
+    font-size: 13px;
+    white-space: nowrap;
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  .term-input {
+    background: transparent;
+    border: none;
+    outline: none;
+    color: var(--text);
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    flex: 1;
+    caret-color: var(--green);
+  }
+
+  /* Autocomplete hint */
+  .hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 4px 16px;
+    border-top: 1px solid var(--border);
+    background: #060a0f;
+    letter-spacing: 0.05em;
+  }
+
+  /* Progress bar */
+  .progress-wrap {
+    height: 4px;
+    background: var(--border);
+    margin: 2px 0;
+    width: 200px;
+    display: inline-block;
+    vertical-align: middle;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--green);
+    box-shadow: 0 0 6px var(--green);
+    transition: width 0.3s;
+  }
+
+  /* ASCII art */
+  .ascii { color: var(--green); font-size: 11px; line-height: 1.4; text-shadow: 0 0 6px var(--green); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--                LOCK SCREEN                  -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="lock-screen">
+  <div class="lock-grid"></div>
+  <div class="lock-wrap">
+
+    <div class="lock-header">
+      <div class="lock-title">TERMINAL_OS</div>
+      <div class="lock-sub">SECURE_KERNEL v2.0 · [SYSTEM LOCKED]</div>
+    </div>
+
+    <div style="border:1px solid var(--border); background:var(--surface); padding:16px;">
+      <div class="face-wrap">
+        <div class="face-ring" onclick="doFaceID()" title="Face ID">
+          <div class="face-ring-outer"></div>
+          <div class="face-ring-spin" id="face-spin"></div>
+          <div class="scan-bar"></div>
+          <div class="face-icon" id="face-icon">👤</div>
+        </div>
+        <div class="face-label" id="face-label">[BIOMETRIC_SCAN_ACTIVE]</div>
+      </div>
+
+      <div class="code-prompt">&gt; ENTER ACCESS CODE <span class="blink">█</span></div>
+
+      <div class="dots-row" id="dots-row">
+        <div class="dot" id="d0"></div>
+        <div class="dot" id="d1"></div>
+        <div class="dot" id="d2"></div>
+        <div class="dot" id="d3"></div>
+      </div>
+
+      <div class="status-line" id="lock-status">Awaiting secure input...</div>
+    </div>
+
+    <div class="keypad">
+      <button class="key" onclick="kp('1')"><span class="key-num">1</span><span class="key-alpha">·</span></button>
+      <button class="key" onclick="kp('2')"><span class="key-num">2</span><span class="key-alpha">ABC</span></button>
+      <button class="key" onclick="kp('3')"><span class="key-num">3</span><span class="key-alpha">DEF</span></button>
+      <button class="key" onclick="kp('4')"><span class="key-num">4</span><span class="key-alpha">GHI</span></button>
+      <button class="key" onclick="kp('5')"><span class="key-num">5</span><span class="key-alpha">JKL</span></button>
+      <button class="key" onclick="kp('6')"><span class="key-num">6</span><span class="key-alpha">MNO</span></button>
+      <button class="key" onclick="kp('7')"><span class="key-num">7</span><span class="key-alpha">PQRS</span></button>
+      <button class="key" onclick="kp('8')"><span class="key-num">8</span><span class="key-alpha">TUV</span></button>
+      <button class="key" onclick="kp('9')"><span class="key-num">9</span><span class="key-alpha">WXYZ</span></button>
+      <button class="key danger" onclick="kpDel()"><span class="key-num">⌫</span></button>
+      <button class="key" onclick="kp('0')"><span class="key-num">0</span><span class="key-alpha">+</span></button>
+      <button class="key danger" onclick="kpDel()"><span class="key-num" style="font-size:11px;color:#f0e040">CLR</span></button>
+    </div>
+
+    <div style="font-size:9px; color:var(--text-dim); text-align:center; letter-spacing:0.15em;">
+      CODE: 1337 &nbsp;|&nbsp; FACE ID: tap icon
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--                BOOT SCREEN                  -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="boot-screen">
+  <div id="boot-lines"></div>
+</div>
+
+<!-- ═══════════════════════════════════════════ -->
+<!--               TERMINAL SCREEN               -->
+<!-- ═══════════════════════════════════════════ -->
+<div id="terminal-screen">
+  <div class="term-topbar">
+    <div class="term-title">⬛ TERMINAL_OS v2.0 — operator@root:~</div>
+    <div class="term-stats">
+      <div>CPU: <span id="stat-cpu">7%</span></div>
+      <div>MEM: <span id="stat-mem">342MB</span></div>
+      <div>NET: <span id="stat-net">↑12 ↓38</span></div>
+      <div id="stat-time">00:00:00</div>
+    </div>
+  </div>
+
+  <div class="term-body" id="term-body"></div>
+
+  <div class="hint" id="hint-bar">TAB: autocomplete &nbsp;|&nbsp; ↑↓: history &nbsp;|&nbsp; type <span style="color:var(--green)">help</span> to start</div>
+
+  <div class="term-input-row">
+    <div class="term-prompt" id="term-prompt">operator@root:~$</div>
+    <input class="term-input" id="term-input" autofocus autocomplete="off" spellcheck="false" placeholder=""/>
+  </div>
+</div>
+
+<script>
+// ══════════════════════════════════════
+//  LOCK SCREEN LOGIC
+// ══════════════════════════════════════
+let code = '';
+const TARGET = '1337';
+let busy = false;
+
+function kp(n) {
+  if (busy || code.length >= 4) return;
+  code += n;
+  updateDots();
+  setStatus(`Input received: bit_${code.length}...`);
+  if (code.length === 4) checkCode();
+}
+
+function kpDel() {
+  if (busy) return;
+  code = '';
+  updateDots('reset');
+  setStatus('Awaiting secure input...');
+}
+
+function updateDots(mode) {
+  for (let i = 0; i < 4; i++) {
+    const d = document.getElementById('d' + i);
+    d.className = 'dot';
+    if (mode === 'error') d.classList.add('error');
+    else if (i < code.length) d.classList.add('filled');
+  }
+}
+
+function setStatus(t, color) {
+  const s = document.getElementById('lock-status');
+  s.textContent = t;
+  s.style.color = color || '';
+}
+
+function checkCode() {
+  busy = true;
+  setStatus('Decrypting handshake...');
+  setTimeout(() => {
+    if (code === TARGET) unlock();
+    else lockFail();
+  }, 500);
+}
+
+function lockFail() {
+  updateDots('error');
+  setStatus('ERROR: INVALID_CREDENTIALS', '#ff4444');
+  setTimeout(() => { code = ''; updateDots('reset'); setStatus('Awaiting secure input...'); busy = false; }, 900);
+}
+
+function unlock() {
+  setStatus('ACCESS GRANTED — BOOTING KERNEL...', '#00e639');
+  document.getElementById('face-icon').textContent = '✓';
+  setTimeout(() => {
+    document.getElementById('lock-screen').classList.add('fade-out');
+    setTimeout(startBoot, 700);
+  }, 600);
+}
+
+function doFaceID() {
+  if (busy) return;
+  busy = true;
+  document.getElementById('face-label').textContent = '[ANALYZING_FACIAL_VECTOR]';
+  document.getElementById('face-icon').textContent = '🔍';
+  setStatus('Verifying biometric signature...');
+  setTimeout(() => {
+    document.getElementById('face-label').textContent = '[SCAN_SUCCESSFUL]';
+    document.getElementById('face-icon').textContent = '✓';
+    code = TARGET;
+    updateDots();
+    unlock();
+  }, 1400);
+}
+
+// keyboard support on lock screen
+document.addEventListener('keydown', e => {
+  if (document.getElementById('terminal-screen').classList.contains('visible')) return;
+  if (document.getElementById('boot-screen').style.display === 'flex') return;
+  if (e.key >= '0' && e.key <= '9') kp(e.key);
+  if (e.key === 'Backspace') kpDel();
+  if (e.key === 'Enter' && code.length === 4) checkCode();
+});
+
+// ══════════════════════════════════════
+//  BOOT SEQUENCE
+// ══════════════════════════════════════
+const bootLines = [
+  { t: 'dim ok', text: 'BIOS v4.2.1 ............ [PASS]' },
+  { t: 'dim ok', text: 'Memory check 8192MB .... [PASS]' },
+  { t: 'dim ok', text: 'Loading kernel image ... [PASS]' },
+  { t: 'green',  text: 'TERMINAL_OS v2.0 booting...' },
+  { t: 'dim ok', text: 'Mounting filesystem .... [PASS]' },
+  { t: 'dim ok', text: 'Starting network stack . [PASS]' },
+  { t: 'dim ok', text: 'Initializing crypto .... [PASS]' },
+  { t: 'yellow', text: 'WARNING: 1 untrusted module detected' },
+  { t: 'dim ok', text: 'Loading user profile ... [PASS]' },
+  { t: 'dim ok', text: 'Starting services ...... [PASS]' },
+  { t: 'green glow', text: '▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓' },
+  { t: 'green glow', text: '  SYSTEM READY — Welcome, operator.' },
+  { t: 'green glow', text: '▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓' },
+];
+
+function startBoot() {
+  const bs = document.getElementById('boot-screen');
+  bs.style.display = 'flex';
+  const container = document.getElementById('boot-lines');
+  let i = 0;
+
+  function next() {
+    if (i >= bootLines.length) {
+      setTimeout(() => {
+        bs.classList.add('fade-out');
+        setTimeout(() => { bs.style.display = 'none'; startTerminal(); }, 600);
+      }, 500);
+      return;
+    }
+    const bl = bootLines[i++];
+    const div = document.createElement('div');
+    div.className = 'boot-line ' + (bl.t || '');
+    div.style.animationDelay = '0ms';
+    div.textContent = bl.text;
+    container.appendChild(div);
+    container.scrollTop = container.scrollHeight;
+    setTimeout(next, 130 + Math.random() * 80);
+  }
+  next();
+}
+
+// ══════════════════════════════════════
+//  TERMINAL ENGINE
+// ══════════════════════════════════════
+let cwd = '~';
+let history = [];
+let histIdx = -1;
+
+const fs = {
+  '~': { type: 'dir', children: ['documents', 'projects', 'system', 'logs', '.secrets'] },
+  '~/documents': { type: 'dir', children: ['readme.txt', 'notes.md'] },
+  '~/projects': { type: 'dir', children: ['web_app', 'kernel_mod', 'exploit_demo'] },
+  '~/projects/web_app': { type: 'dir', children: ['index.html', 'app.js', 'style.css'] },
+  '~/projects/kernel_mod': { type: 'dir', children: ['mod.c', 'Makefile'] },
+  '~/projects/exploit_demo': { type: 'dir', children: ['README.md', 'poc.py'] },
+  '~/system': { type: 'dir', children: ['config.sys', 'network.cfg', 'users.db'] },
+  '~/logs': { type: 'dir', children: ['access.log', 'error.log', 'boot.log'] },
+  '~/.secrets': { type: 'dir', children: ['.env', 'keys.pem'] },
+  'readme.txt': { type: 'file', content: 'TERMINAL_OS v2.0\nOperator manual — classified.' },
+  'notes.md': { type: 'file', content: '# Notes\n- Check network logs\n- Update crypto module\n- Meeting: 23:00 UTC' },
+  'config.sys': { type: 'file', content: 'kernel=terminal_os\nmode=secure\ndebug=false\nmax_users=1' },
+  'network.cfg': { type: 'file', content: 'iface=eth0\nip=10.0.0.1\ngateway=10.0.0.254\ndns=1.1.1.1' },
+  'users.db': { type: 'file', content: 'operator:root:****\nguest:usr:locked' },
+  'access.log': { type: 'file', content: '[00:01] AUTH_OK operator\n[00:03] CMD: ls\n[00:07] CMD: cat users.db\n[00:12] ALERT: unknown probe on port 8080' },
+  'error.log': { type: 'file', content: '[WARN] crypto module deprecated\n[ERR]  network timeout x3\n[INFO] auto-recovery successful' },
+  '.env': { type: 'file', content: 'DB_PASS=***REDACTED***\nAPI_KEY=***REDACTED***\nSECRET_TOKEN=***REDACTED***' },
+};
+
+const commands = {
+  help: cmdHelp,
+  ls: cmdLs,
+  cd: cmdCd,
+  cat: cmdCat,
+  pwd: cmdPwd,
+  clear: cmdClear,
+  whoami: cmdWhoami,
+  date: cmdDate,
+  echo: cmdEcho,
+  mkdir: cmdMkdir,
+  touch: cmdTouch,
+  rm: cmdRm,
+  neofetch: cmdNeofetch,
+  ping: cmdPing,
+  ifconfig: cmdIfconfig,
+  ps: cmdPs,
+  top: cmdTop,
+  uname: cmdUname,
+  history: cmdHistory,
+  hack: cmdHack,
+  matrix: cmdMatrix,
+  reboot: cmdReboot,
+  logout: cmdLogout,
+  exit: cmdLogout,
+};
+
+function startTerminal() {
+  document.getElementById('terminal-screen').classList.add('visible');
+  updateClock();
+  updateStats();
+  setInterval(updateClock, 1000);
+  setInterval(updateStats, 3000);
+
+  const input = document.getElementById('term-input');
+  input.focus();
+
+  printWelcome();
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const val = input.value.trim();
+      if (val) { history.unshift(val); histIdx = -1; }
+      input.value = '';
+      runCmd(val);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (histIdx < history.length - 1) { histIdx++; input.value = history[histIdx]; }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (histIdx > 0) { histIdx--; input.value = history[histIdx]; }
+      else { histIdx = -1; input.value = ''; }
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      autoComplete(input);
+    }
+    updateHint(input.value);
+  });
+
+  input.addEventListener('input', () => updateHint(input.value));
+}
+
+function updateHint(val) {
+  const cmds = Object.keys(commands);
+  const hint = document.getElementById('hint-bar');
+  if (!val) { hint.innerHTML = 'TAB: autocomplete &nbsp;|&nbsp; ↑↓: history &nbsp;|&nbsp; type <span style="color:var(--green)">help</span> to list commands'; return; }
+  const match = cmds.filter(c => c.startsWith(val));
+  if (match.length) hint.innerHTML = 'Suggestions: <span style="color:var(--green)">' + match.join('  ') + '</span>';
+  else hint.innerHTML = '';
+}
+
+function autoComplete(input) {
+  const val = input.value;
+  const parts = val.split(' ');
+  const last = parts[parts.length - 1];
+  if (parts.length === 1) {
+    const m = Object.keys(commands).filter(c => c.startsWith(last));
+    if (m.length === 1) input.value = m[0];
+  }
+}
+
+function print(text, cls = 'green') {
+  const body = document.getElementById('term-body');
+  const div = document.createElement('div');
+  div.className = 'term-line ' + cls;
+  div.textContent = text;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function printHTML(html, cls = 'green') {
+  const body = document.getElementById('term-body');
+  const div = document.createElement('div');
+  div.className = 'term-line ' + cls;
+  div.innerHTML = html;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function printBlank() { print('', 'dim'); }
+
+function echoCmd(cmd) {
+  const p = document.getElementById('term-prompt').textContent;
+  print(p + ' ' + cmd, 'dim');
+}
+
+function runCmd(raw) {
+  if (!raw) { echoCmd(''); printBlank(); return; }
+  echoCmd(raw);
+  const parts = raw.trim().split(/\s+/);
+  const cmd = parts[0].toLowerCase();
+  const args = parts.slice(1);
+  const fn = commands[cmd];
+  if (fn) fn(args);
+  else print(`bash: ${cmd}: command not found`, 'red');
+  printBlank();
+}
+
+function printWelcome() {
+  print('▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓', 'green glow');
+  print('  TERMINAL_OS v2.0  —  Welcome, operator.', 'green glow');
+  print('  Last login: ' + new Date().toUTCString(), 'dim');
+  print('▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓', 'green glow');
+  printBlank();
+  print("Type 'help' for available commands.", 'dim');
+  printBlank();
+}
+
+// ── COMMANDS ────────────────────────────────────
+
+function cmdHelp() {
+  print('┌─ AVAILABLE COMMANDS ──────────────────────────────┐', 'cyan');
+  const cols = [
+    ['help',     'Show this help'],
+    ['ls',       'List directory'],
+    ['cd [dir]', 'Change directory'],
+    ['cat [f]',  'Read a file'],
+    ['pwd',      'Print working dir'],
+    ['clear',    'Clear terminal'],
+    ['whoami',   'Current user'],
+    ['date',     'Current datetime'],
+    ['echo [..]','Print text'],
+    ['mkdir [d]','Make directory'],
+    ['touch [f]','Create file'],
+    ['rm [f]',   'Remove file/dir'],
+    ['neofetch', 'System info'],
+    ['ping [h]', 'Ping a host'],
+    ['ifconfig', 'Network info'],
+    ['ps',       'Running processes'],
+    ['top',      'System monitor'],
+    ['uname',    'Kernel info'],
+    ['history',  'Command history'],
+    ['hack',     '???'],
+    ['matrix',   'Enter the matrix'],
+    ['reboot',   'Reboot system'],
+    ['logout',   'Log out'],
+  ];
+  cols.forEach(([c, d]) => print(`│  ${c.padEnd(14)}  ${d.padEnd(30)} │`, 'cyan'));
+  print('└────────────────────────────────────────────────────┘', 'cyan');
+}
+
+function cmdLs(args) {
+  const path = resolvePath(args[0]);
+  const node = fs[path] || fs[cwd];
+  if (!node || node.type !== 'dir') { print(`ls: cannot access '${args[0] || '.'}': No such directory`, 'red'); return; }
+  node.children.forEach(name => {
+    const isDir = Object.keys(fs).includes((path === '~' ? '~/' : path + '/') + name) ||
+                  Object.keys(fs).some(k => k === path + '/' + name);
+    if (name.startsWith('.')) print('  ' + name, 'dim');
+    else if (isDir) print('  ' + name + '/', 'cyan');
+    else print('  ' + name, 'white');
+  });
+}
+
+function cmdCd(args) {
+  if (!args[0] || args[0] === '~') { cwd = '~'; updatePrompt(); return; }
+  const target = resolvePath(args[0]);
+  if (fs[target] && fs[target].type === 'dir') { cwd = target; updatePrompt(); }
+  else print(`cd: ${args[0]}: No such directory`, 'red');
+}
+
+function cmdCat(args) {
+  if (!args[0]) { print('Usage: cat <filename>', 'yellow'); return; }
+  const fname = args[0];
+  // search in cwd children
+  const node = fs[fname] || fs[cwd + '/' + fname] || fs['~/' + fname];
+  if (!node || node.type === 'dir') { print(`cat: ${fname}: No such file`, 'red'); return; }
+  node.content.split('\n').forEach(l => print(l, 'white'));
+}
+
+function cmdPwd() { print(cwd.replace('~', '/home/operator'), 'white'); }
+
+function cmdClear() { document.getElementById('term-body').innerHTML = ''; }
+
+function cmdWhoami() { print('operator', 'green'); print('uid=0(root) gid=0(root) groups=0(root)', 'dim'); }
+
+function cmdDate() { print(new Date().toString(), 'white'); }
+
+function cmdEcho(args) { print(args.join(' '), 'white'); }
+
+function cmdMkdir(args) {
+  if (!args[0]) { print('Usage: mkdir <dirname>', 'yellow'); return; }
+  print(`mkdir: created directory '${args[0]}'`, 'dim');
+}
+
+function cmdTouch(args) {
+  if (!args[0]) { print('Usage: touch <filename>', 'yellow'); return; }
+  print(`touch: created '${args[0]}'`, 'dim');
+}
+
+function cmdRm(args) {
+  if (!args[0]) { print('Usage: rm <file>', 'yellow'); return; }
+  print(`removed '${args[0]}'`, 'dim');
+}
+
+function cmdNeofetch() {
+  print('', 'dim');
+  print('        ████████        operator@terminal-os', 'green');
+  print('      ██░░░░░░░░██      ─────────────────────', 'green');
+  print('    ██░░░░░░░░░░░░██    OS:     TERMINAL_OS v2.0', 'green');
+  print('    ██░░░░░░░░░░░░██    Kernel: 6.1.0-terminal', 'green');
+  print('  ██░░░░██████░░░░░░██  Shell:  bash 5.2.15', 'green');
+  print('  ██░░░░██████░░░░░░██  CPU:    x86_64 @ 3.2GHz', 'green');
+  print('    ██░░░░░░░░░░░░██    RAM:    ' + document.getElementById('stat-mem').textContent, 'green');
+  print('      ██░░░░░░░░██      Uptime: ' + getUptime(), 'green');
+  print('        ████████        Terminal: xterm-256color', 'green');
+  print('', 'dim');
+}
+
+function cmdPing(args) {
+  const host = args[0] || 'localhost';
+  print(`PING ${host}: 56 bytes of data.`, 'white');
+  let i = 0;
+  const iv = setInterval(() => {
+    const ms = (Math.random() * 20 + 5).toFixed(2);
+    print(`64 bytes from ${host}: icmp_seq=${i+1} ttl=64 time=${ms} ms`, 'green');
+    if (++i >= 4) { clearInterval(iv); print(`\n--- ${host} ping statistics ---`, 'cyan'); print(`4 packets transmitted, 4 received, 0% packet loss`, 'white'); }
+  }, 400);
+}
+
+function cmdIfconfig() {
+  print('eth0: flags=4163<UP,BROADCAST,RUNNING,MULTICAST>  mtu 1500', 'white');
+  print('      inet 10.0.0.1  netmask 255.255.255.0  broadcast 10.0.0.255', 'white');
+  print('      ether 00:1a:2b:3c:4d:5e  txqueuelen 1000', 'dim');
+  print('lo:   flags=73<UP,LOOPBACK,RUNNING>  mtu 65536', 'white');
+  print('      inet 127.0.0.1  netmask 255.0.0.0', 'white');
+}
+
+function cmdPs() {
+  print('  PID  TTY   STAT   TIME  COMMAND', 'cyan');
+  [['1','?','Ss','0:01','init'],['312','?','S','0:00','kernel_watchdog'],
+   ['580','pts/0','Ss','0:00','bash'],['812','?','S','0:00','net_monitor'],
+   ['1001','pts/0','R+','0:00','terminal_os']].forEach(r =>
+    print(`  ${r[0].padEnd(5)}${r[1].padEnd(6)}${r[2].padEnd(7)}${r[3].padEnd(6)}${r[4]}`, 'white'));
+}
+
+function cmdTop() {
+  print('top - ' + new Date().toTimeString().split(' ')[0] + '  up ' + getUptime(), 'white');
+  print('Tasks:   5 total,   1 running,   4 sleeping', 'white');
+  print('%Cpu(s):  ' + document.getElementById('stat-cpu').textContent + ' us,  0.3 sy,  0.0 ni', 'white');
+  print('MiB Mem:  8192.0 total,   7850.0 free,    ' + document.getElementById('stat-mem').textContent + ' used', 'white');
+  printBlank();
+  print('  PID  USER     %CPU  %MEM  COMMAND', 'cyan');
+  print('  1001 root      2.3   1.1  terminal_os', 'green');
+  print('   812 root      0.5   0.2  net_monitor', 'white');
+  print('   580 operator  0.1   0.1  bash', 'white');
+}
+
+function cmdUname(args) {
+  if (args.includes('-a'))
+    print('TERMINAL_OS terminal-host 6.1.0 #1 SMP x86_64 GNU/Linux', 'white');
+  else print('TERMINAL_OS', 'white');
+}
+
+function cmdHistory() {
+  if (!history.length) { print('No history yet.', 'dim'); return; }
+  history.slice().reverse().forEach((h, i) => print(`  ${String(i+1).padStart(3)}  ${h}`, 'white'));
+}
+
+function cmdHack() {
+  print('[*] Initiating breach sequence...', 'yellow');
+  const steps = [
+    '[*] Scanning target ports...',
+    '[+] Open ports: 22, 80, 443, 8080',
+    '[*] Probing SSH banner...',
+    '[+] OpenSSH 8.4p1 detected',
+    '[*] Loading exploit module: CVE-2024-XXXX',
+    '[*] Sending payload...',
+    '[+] Shell obtained.',
+    '[!] ROOT ACCESS GRANTED',
+  ];
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i >= steps.length) { clearInterval(iv); print('[*] Hack complete. Just kidding — stay ethical.', 'cyan'); printBlank(); return; }
+    const s = steps[i++];
+    print(s, s.startsWith('[+]') ? 'green' : s.startsWith('[!]') ? 'yellow' : 'dim');
+  }, 350);
+}
+
+let matrixActive = false;
+function cmdMatrix() {
+  if (matrixActive) return;
+  matrixActive = true;
+  const chars = '01アイウエオカキクケコサシスセソタチツテトナニヌネノ';
+  print('[Entering the matrix... press any key to exit]', 'cyan');
+  const body = document.getElementById('term-body');
+  const iv = setInterval(() => {
+    let line = '';
+    for (let i = 0; i < 60; i++) line += chars[Math.floor(Math.random() * chars.length)];
+    print(line, Math.random() > 0.8 ? 'green glow' : 'dim');
+    body.scrollTop = body.scrollHeight;
+  }, 60);
+  const stop = () => { clearInterval(iv); matrixActive = false; print('[Matrix exited]', 'cyan'); printBlank(); document.removeEventListener('keydown', stop); };
+  setTimeout(() => document.addEventListener('keydown', stop), 500);
+}
+
+function cmdReboot() {
+  print('[*] Rebooting system...', 'yellow');
+  setTimeout(() => {
+    document.getElementById('terminal-screen').classList.remove('visible');
+    document.getElementById('boot-screen').classList.remove('fade-out');
+    document.getElementById('boot-screen').style.display = 'flex';
+    document.getElementById('boot-lines').innerHTML = '';
+    busy = false; code = '';
+    setTimeout(() => {
+      document.getElementById('boot-screen').classList.add('fade-out');
+      setTimeout(() => {
+        document.getElementById('boot-screen').style.display = 'none';
+        document.getElementById('term-body').innerHTML = '';
+        document.getElementById('terminal-screen').classList.add('visible');
+        printWelcome();
+      }, 600);
+    }, 2500);
+  }, 800);
+}
+
+function cmdLogout() {
+  print('[*] Logging out...', 'yellow');
+  setTimeout(() => {
+    document.getElementById('terminal-screen').classList.remove('visible');
+    // reset lock
+    code = ''; busy = false;
+    updateDots('reset');
+    setStatus('Awaiting secure input...');
+    document.getElementById('face-icon').textContent = '👤';
+    document.getElementById('face-label').textContent = '[BIOMETRIC_SCAN_ACTIVE]';
+    const ls = document.getElementById('lock-screen');
+    ls.classList.remove('fade-out');
+    ls.style.opacity = '1';
+    ls.style.transform = '';
+  }, 600);
+}
+
+// ── HELPERS ─────────────────────────────────────
+
+function resolvePath(p) {
+  if (!p || p === '.' || p === '') return cwd;
+  if (p === '..') {
+    const parts = cwd.split('/');
+    return parts.length > 1 ? parts.slice(0, -1).join('/') || '~' : '~';
+  }
+  if (p.startsWith('~')) return p;
+  if (p.startsWith('/')) return '~' + p;
+  return cwd === '~' ? '~/' + p : cwd + '/' + p;
+}
+
+function updatePrompt() {
+  const display = cwd.replace('~', '~');
+  document.getElementById('term-prompt').textContent = `operator@root:${display}$`;
+}
+
+let startTime = Date.now();
+function getUptime() {
+  const s = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(s / 60), sec = s % 60;
+  return `${m}m ${sec}s`;
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('stat-time').textContent =
+    now.toTimeString().split(' ')[0];
+}
+
+function updateStats() {
+  document.getElementById('stat-cpu').textContent = (Math.random()*15+3).toFixed(1) + '%';
+  document.getElementById('stat-mem').textContent = (Math.floor(Math.random()*200+280)) + 'MB';
+  const up = Math.floor(Math.random()*80+10), down = Math.floor(Math.random()*120+20);
+  document.getElementById('stat-net').textContent = `↑${up} ↓${down}`;
+}
+</script>
+</body>
+</html>
